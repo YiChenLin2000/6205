@@ -48,6 +48,7 @@ public class Benchmark_Timer<T> implements Benchmark<T> {
      * @param m        the number of times the function f will be called.
      * @return the average number of milliseconds taken for each run of function f.
      */
+    @Override
     public double runFromSupplier(Supplier<T> supplier, int m) {
         logger.info("Begin run: " + description + " with " + formatWhole(m) + " runs");
         // Warmup phase
@@ -55,10 +56,71 @@ public class Benchmark_Timer<T> implements Benchmark<T> {
             fRun.accept(t);
             return t;
         };
-        new Timer().repeat(getWarmupRuns(m), true, supplier, function, fPre, null);
+        repeat(getWarmupRuns(m), true, supplier, function, fPre, null);
 
         // Timed phase
-        return new Timer().repeat(m, false, supplier, function, fPre, fPost);
+        return repeat(m, false, supplier, function, fPre, fPost);
+    }
+
+    /**
+     * Repeats a given function multiple times, optionally applying pre-processing and post-processing functions.
+     *
+     * @param n             the number of repetitions.
+     * @param warmup        true if the current iteration is a warmup run, false otherwise.
+     * @param supplier      supplies the input to the function.
+     * @param function      the main function to be timed.
+     * @param preFunction   a function to preprocess the input (optional).
+     * @param postFunction  a function to process the output (optional).
+     * @param <T>           the type of input to the function.
+     * @param <U>           the type of output from the function.
+     * @return              the average time taken for each function execution in milliseconds.
+     */
+    public <T, U> double repeat(int n, boolean warmup, Supplier<T> supplier, Function<T, U> function, UnaryOperator<T> preFunction, Consumer<U> postFunction) {
+        long totalTime = 0;
+
+        for (int i = 0; i < n; i++) {
+            T input = supplier.get();
+            if (preFunction != null) {
+                input = preFunction.apply(input);  // Preprocess input if preFunction is provided
+            }
+
+            long startTime = getClock();  // Start timing
+
+            U result = function.apply(input);  // Run the main function
+
+            long endTime = getClock();  // Stop timing
+
+            if (postFunction != null) {
+                postFunction.accept(result);  // Process result if postFunction is provided
+            }
+
+            // Accumulate time only if not in the warmup phase
+            if (!warmup) {
+                totalTime += (endTime - startTime);
+            }
+        }
+
+        // Return average time per execution in milliseconds
+        return toMillisecs(totalTime) / (double) n;
+    }
+
+    /**
+     * Gets the current time in nanoseconds.
+     *
+     * @return the current clock time in nanoseconds.
+     */
+    private static long getClock() {
+        return System.nanoTime();
+    }
+
+    /**
+     * Converts a time duration in nanoseconds to milliseconds.
+     *
+     * @param ticks time in nanoseconds.
+     * @return the time in milliseconds.
+     */
+    private static double toMillisecs(long ticks) {
+        return ticks / 1_000_000.0;  // Convert from nanoseconds to milliseconds
     }
 
     /**
