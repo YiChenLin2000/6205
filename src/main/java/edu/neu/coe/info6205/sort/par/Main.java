@@ -58,24 +58,52 @@ public class Main {
     }
 
     private static void processArgs(String[] args) {
-        String[] xs = args;
-        while (xs.length > 0)
-            if (xs[0].startsWith("-")) xs = processArg(xs);
+        // String[] xs = args;
+        // while (xs.length > 0)
+        //     if (xs[0].startsWith("-")) xs = processArg(xs);
+        String[] remainingArgs = args;
+        while (remainingArgs.length > 0 && remainingArgs[0].startsWith("-")) {
+            remainingArgs = processArg(remainingArgs);
+        }
     }
 
-    private static String[] processArg(String[] xs) {
-        String[] result = new String[0];
-        System.arraycopy(xs, 2, result, 0, xs.length - 2);
-        processCommand(xs[0], xs[1]);
-        return result;
+    private static String[] processArg(String[] args) {
+        if (args.length < 2) {
+            System.out.println("Invalid arguments: " + String.join(" ", args));
+            return new String[0];  
+        }
+
+        String command = args[0];
+        String value = args[1];
+        processCommand(command, value);
+
+        String[] remainingArgs = new String[args.length - 2];
+        if (remainingArgs.length > 0) {
+            System.arraycopy(args, 2, remainingArgs, 0, remainingArgs.length);
+        }
+        return remainingArgs;
     }
 
     private static void processCommand(String x, String y) {
-        if (x.equalsIgnoreCase("N")) setConfig(x, Integer.parseInt(y));
-        else
-            // TODO sort this out
-            if (x.equalsIgnoreCase("P")) //noinspection ResultOfMethodCallIgnored
-                ForkJoinPool.getCommonPoolParallelism();
+        try {
+            if (x.equalsIgnoreCase("-N")) {
+                // 設置 cutoff 值
+                int cutoff = Integer.parseInt(y);
+                ParSort.cutoff = cutoff;
+                System.out.println("Setting cutoff to " + cutoff);
+            } else if (x.equalsIgnoreCase("-P")) {
+                // 設置執行緒平行度
+                int parallelism = Integer.parseInt(y);
+                System.setProperty("java.util.concurrent.ForkJoinPool.common.parallelism", String.valueOf(parallelism));
+                // 更新 maxDepth 根據平行度來設置最大遞迴深度
+                ParSort.maxDepth = (int) (Math.log(parallelism) / Math.log(2));
+                System.out.println("Setting parallelism to " + parallelism + " and max depth to " + ParSort.maxDepth);
+            } else {
+                System.out.println("Unknown command: " + x);
+            }
+        } catch (NumberFormatException e) {
+            System.out.println("Invalid value for " + x + ": " + y);
+        }
     }
 
     private static void setConfig(String x, int i) {
