@@ -3,6 +3,10 @@ package edu.neu.coe.info6205.pq;
 import java.util.*;
 import java.util.function.BiPredicate;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
+
+import edu.neu.coe.info6205.pq.PriorityQueue.QuaternaryHeap;
+import edu.neu.coe.info6205.util.Benchmark_Timer;
 
 /**
  * Priority Queue Data Structure which uses a binary heap.
@@ -41,6 +45,7 @@ public class PriorityQueue<K> implements Iterable<K> {
         //noinspection unchecked
         this.binHeap = (K[]) binHeap;
         this.floyd = floyd;
+        
     }
 
     /**
@@ -202,7 +207,7 @@ public class PriorityQueue<K> implements Iterable<K> {
     /**
      * Get the index of the parent of the element at index k
      */
-    private int parent(int k) {
+    protected int parent(int k) {
         return (k + 1 - first) / 2 + first - 1;
     }
 
@@ -210,7 +215,7 @@ public class PriorityQueue<K> implements Iterable<K> {
      * Get the index of the first child of the element at index k.
      * The index of the second child will be one greater than the result.
      */
-    private int firstChild(int k) {
+    protected int firstChild(int k) {
         return (k + 1 - first) * 2 + first - 1;
     }
 
@@ -228,8 +233,12 @@ public class PriorityQueue<K> implements Iterable<K> {
         return max;
     }
 
+    protected int getFirst() {
+        return first;
+    }
+
     private final boolean max;
-    private final int first;
+    private final int first ;
     private final Comparator<K> comparator;
     private final K[] binHeap; // binHeap[i] is ith element of binary heap (first element is reserved)
     private int last; // number of elements in the binary heap
@@ -248,29 +257,120 @@ public class PriorityQueue<K> implements Iterable<K> {
         return result;
     }
 
+    public static class QuaternaryHeap<K> extends PriorityQueue<K> {
+        public QuaternaryHeap(int n, boolean max, Comparator<K> comparator, boolean floyd) {
+            super(n, 1, max, comparator, floyd);
+        }
+
+        @Override
+        protected int firstChild(int k) {
+            return (k - getFirst()) * 4 + 1 + getFirst();
+        }
+
+        @Override
+        protected int parent(int k) {
+            return (k - 1) / 4 + getFirst();
+        }
+    }
+
+    private static <T extends PriorityQueue<Integer>> void runBenchmark(
+            String description,
+            Supplier<T> heapSupplier,
+            Supplier<Integer> randomSupplier,
+            int maxElements,
+            int totalInsertions,
+            int totalRemovals) {
+
+        Benchmark_Timer<T> benchmark = new Benchmark_Timer<>(
+                description,
+                heap -> {
+                   
+                    for (int i = 0; i < totalInsertions; i++) {
+                        heap.give(randomSupplier.get());
+                        if (heap.size() > maxElements) {
+                            try {
+                                heap.take(); 
+                            } catch (PQException e) {
+                                System.err.println("Error removing element from heap: " + e.getMessage());
+                            }
+                        }
+                    }
+                },
+                heap -> {
+                    
+                    Integer highestPrioritySpilled = null;
+                    for (int i = 0; i < totalRemovals; i++) {
+                        try {
+                            Integer removed = heap.take();
+                            if (highestPrioritySpilled == null || removed > highestPrioritySpilled) {
+                                highestPrioritySpilled = removed;
+                            }
+                        } catch (PQException e) {
+                            System.err.println("Error during removal in removal phase: " + e.getMessage());
+                            break;  
+                        }
+                    }
+                    System.out.println(description + " - Highest priority spilled element: " + highestPrioritySpilled);
+                }
+        );
+
+        double averageTime = benchmark.runFromSupplier(heapSupplier, 10);
+        System.out.println(description + " - Average time per run: " + averageTime + " ms");
+    }
+
+
     public static void main(String[] args) {
+       
         doMain();
+        
     }
 
     /**
      * XXX Huh?
      */
     static void doMain() {
-        String[] s1 = new String[5]; //Created a string type array with size 5
-        s1[0] = "A";
-        s1[1] = "B";
-        s1[2] = "C";
-        s1[3] = "D";
-        s1[4] = "E";
-        boolean max = true;
-        boolean floyd = true;
-        PriorityQueue<String> PQ_string_floyd = new PriorityQueue<>(max, s1, 1, 5, Comparator.comparing(String::toString), floyd);
-        PriorityQueue<String> PQ_string_nofloyd = new PriorityQueue<>(max, s1, 1, 5, Comparator.comparing(String::toString), false);
-        Integer[] s2 = new Integer[5]; //created an Integer type array with size 5
-        for (int i = 0; i < 5; i++) {
-            s2[i] = i;
+        int[] sizes = {1000, 2000, 4000, 8000, 16000};
+        int maxElements = 4095;
+
+        for (int n : sizes) {
+            System.out.println("Benchmarking with N = " + n);
+
+            runBenchmark("Binary Heap", () -> new PriorityQueue<>(maxElements, true, Comparator.comparingInt(a -> a), false),
+                    () -> new Random().nextInt(100000), maxElements, n, n / 4);
+
+            runBenchmark("Binary Heap with Floyd's Trick", () -> new PriorityQueue<>(maxElements, true, Comparator.comparingInt(a -> a), true),
+                    () -> new Random().nextInt(100000), maxElements, n, n / 4);
+
+            runBenchmark("4-ary Heap", () -> new QuaternaryHeap<>(maxElements, true, Comparator.comparingInt(a -> a), false),
+                    () -> new Random().nextInt(100000), maxElements, n, n / 4);
+
+            runBenchmark("4-ary Heap with Floyd's Trick", () -> new QuaternaryHeap<>(maxElements, true, Comparator.comparingInt(a -> a), true),
+                    () -> new Random().nextInt(100000), maxElements, n, n / 4);
         }
-        PriorityQueue<Integer> PQ_int_floyd = new PriorityQueue<>(max, s2, 1, 5, Comparator.comparing(Integer::intValue), floyd);
-        PriorityQueue<Integer> PQ_int_nofloyd = new PriorityQueue<>(max, s2, 1, 5, Comparator.comparing(Integer::intValue), false);
+
+        
+
+
+        // PriorityQueue<Integer> binaryHeap = new PriorityQueue<>(4095, true, Comparator.comparingInt(a -> a), false);
+        // PriorityQueue<Integer> binaryHeapFloyd = new PriorityQueue<>(4095, true, Comparator.comparingInt(a -> a), true);
+        // QuaternaryHeap<Integer> quaternaryHeap = new QuaternaryHeap<>(4095, true, Comparator.comparingInt(a -> a), false);
+        // QuaternaryHeap<Integer> quaternaryHeapFloyd = new QuaternaryHeap<>(4095, true, Comparator.comparingInt(a -> a), true);
+
+        // String[] s1 = new String[5]; //Created a string type array with size 5
+        // s1[0] = "A";
+        // s1[1] = "B";
+        // s1[2] = "C";
+        // s1[3] = "D";
+        // s1[4] = "E";
+        // boolean max = true;
+        // boolean floyd = true;
+        // PriorityQueue<String> PQ_string_floyd = new PriorityQueue<>(max, s1, 1, 5, Comparator.comparing(String::toString), floyd);
+        // PriorityQueue<String> PQ_string_nofloyd = new PriorityQueue<>(max, s1, 1, 5, Comparator.comparing(String::toString), false);
+        // Integer[] s2 = new Integer[5]; //created an Integer type array with size 5
+        // for (int i = 0; i < 5; i++) {
+        //     s2[i] = i;
+        // }
+        // PriorityQueue<Integer> PQ_int_floyd = new PriorityQueue<>(max, s2, 1, 5, Comparator.comparing(Integer::intValue), floyd);
+        // PriorityQueue<Integer> PQ_int_nofloyd = new PriorityQueue<>(max, s2, 1, 5, Comparator.comparing(Integer::intValue), false);
     }
 }

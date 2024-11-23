@@ -41,12 +41,81 @@ public class SortBenchmark {
     public static final String BENCHMARKSTRINGSORTERS = "benchmarkstringsorters";
 
     public static void main(String[] args) throws IOException {
-        Config config = Config.load(SortBenchmark.class);
-        logger.info("!!!!!!!!!!!!!!!!!!!! SortBenchmark Start !!!!!!!!!!!!!!!!!!!!\n");
-        logger.info("SortBenchmark.main: version " + config.get("sortbenchmark", "version") + " with word counts: " + Arrays.toString(args));
-        if (args.length == 0) logger.warn("No word counts specified on the command line");
-        new SortBenchmark(config).doMain(args);
+    Config config = Config.load(SortBenchmark.class);
+    logger.info("!!!!!!!!!!!!!!!!!!!! SortBenchmark Start !!!!!!!!!!!!!!!!!!!!\n");
+    logger.info("SortBenchmark.main: version " + config.get("sortbenchmark", "version") + " with word counts: " + Arrays.toString(args));
+
+    if (args.length == 0) {
+        logger.warn("SortBenchmark.main: version " + config.get("sortbenchmark", "version") + " with default word counts: \"10000\", \"20000\", \"40000\", \"80000\", \"160000\"");
+        args = new String[]{"10000", "20000", "40000", "80000", "160000"};
     }
+
+    // Input sizes
+    int[] sizes = Stream.of(args).mapToInt(Integer::parseInt).toArray();
+
+    for (int size : sizes) {
+        logger.info("********************* Running benchmark for size: " + size + " *********************");
+
+        // Initialize instrumented helpers and sorters
+        InstrumentedComparableHelper<String> heapHelper = new InstrumentedComparableHelper<>("HeapSort", size, config);
+        InstrumentedComparableHelper<String> mergeHelper = new InstrumentedComparableHelper<>("MergeSort", size, config);
+        InstrumentedComparableHelper<String> quickHelper = new InstrumentedComparableHelper<>("DualPivotQuickSort", size, config);
+
+        SortWithHelper<String> heapSort = new HeapSort<>(heapHelper);
+        SortWithHelper<String> mergeSort = new MergeSort<>(mergeHelper);
+        SortWithHelper<String> quickSort = new QuickSort_DualPivot<>(quickHelper);
+
+        // Generate random data
+        String[] randomWords = generateRandomWords(size);
+
+        // Run and log benchmarks
+        runAndLogBenchmark(randomWords, size, heapSort, heapHelper, "HeapSort");
+        runAndLogBenchmark(randomWords, size, mergeSort, mergeHelper, "MergeSort");
+        runAndLogBenchmark(randomWords, size, quickSort, quickHelper, "DualPivotQuickSort");
+    }
+
+    logger.info("!!!!!!!!!!!!!!!!!!!! SortBenchmark End !!!!!!!!!!!!!!!!!!!!\n");
+}
+
+// Helper method to run a sort benchmark and log metrics
+private static void runAndLogBenchmark(String[] data, int size, SortWithHelper<String> sorter, InstrumentedComparableHelper<String> helper, String algorithm) {
+    logger.info("Running " + algorithm + " benchmark...");
+    sorter.init(size);
+
+    // Record start time
+    long startTime = System.nanoTime();
+
+    // Perform the sorting
+    String[] copyData = data.clone();
+    sorter.sort(copyData, 0, size);
+
+    // Record end time and calculate elapsed time
+    long endTime = System.nanoTime();
+    double elapsedTimeMillis = (endTime - startTime) / 1_000_000.0;
+
+    // Log metrics and run time
+    logger.info("Metrics for " + algorithm + " with " + size + " elements:");
+    logger.info("Comparisons: " + helper.instrumenter.getCompares());
+    logger.info("Swaps: " + helper.instrumenter.getSwaps());
+    logger.info("Hits: " + helper.instrumenter.getHits());
+    logger.info("Copies: " + helper.instrumenter.getCopies());
+    logger.info("Run Time: " + elapsedTimeMillis + " ms");
+    logger.info("************************************************************");
+    sorter.close();
+}
+
+// Helper method to generate random words
+private static String[] generateRandomWords(int n) {
+    Random random = new Random();
+    String[] words = new String[n];
+    for (int i = 0; i < n; i++) {
+        words[i] = random.ints(97, 123) // Generate random lowercase letters
+                .limit(10) // Limit to 10 characters
+                .collect(StringBuilder::new, StringBuilder::appendCodePoint, StringBuilder::append)
+                .toString();
+    }
+    return words;
+}
 
     void doMain(String[] args) {
         sortStrings(getWordCounts(args));
@@ -175,9 +244,7 @@ public class SortBenchmark {
 
         if (isConfigBenchmarkStringSorter("heapsort") && nRunsLinearithmic > 0) {
             Helper<String> helper = HelperFactory.create("Heapsort", nWords, config);
-            try (SortWithHelper<String> sorter = new HeapSort<>(helper)) {
-                runStringSortBenchmark(words, nWords, nRunsLinearithmic * 3, sorter, timeLoggersLinearithmic);
-            }
+            runStringSortBenchmark(words, nWords, nRunsLinearithmic, new HeapSort<>(helper), timeLoggersLinearithmic);
         }
 
         if (isConfigBenchmarkStringSorter("introsort") && nRunsLinearithmic > 0)
